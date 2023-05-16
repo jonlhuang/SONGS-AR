@@ -11,6 +11,7 @@ library(ggh4x) #additional axis
 #function
 
 se <- function(x) sd(x)/sqrt(length(x))
+
 fishYOY <- function(data,species,length,reef) {
   data %>% 
     filter(species_code == {{species}},
@@ -20,30 +21,245 @@ fishYOY <- function(data,species,length,reef) {
     group_by(year) %>% 
     summarize(count = sum(count))
 }
-  
-  
 
-#import data
+yoy <- function(data,species,size){
+  wnr <- fishYOY(data, species, size, "WNR")
+  bk <- fishYOY(data, species, size, "BK")
+  smk <- fishYOY(data, species, size, "SMK")
+  year <- data_frame(year = as_factor(c(2000:2021))) 
+  YOY <- list(wnr,smk,bk)
+  
+  left_join(year, YOY %>% #join year to have all years, with combined list of all reefs
+    reduce(full_join, #combine using reduce with function "full_join"
+           by = "year") %>% 
+    rename("WNR" = count.x, #rename columns to site names
+           "SMK" = count.y ,
+           "BK" = count)
+     )
+}
+
+pane_yoy <- yoy(songs_count_sum, "PANE", 7.62)
+  
+ar_nr <- function(data,reefar,xlim,reefnr, title){
+  p1 <- ggplot(data %>% filter(reef_code%in% {{reefar}}) %>% 
+                 mutate(year = as_factor(year)),    #data 
+               aes(x = total_length, color = year))+   #specify x & solor by year
+    geom_density(linewidth = 1.5)+   #use density plot
+    facet_wrap(~species_code,ncol=1, scales = "free")+    #separate plots by species
+    ggh4x::facetted_pos_scales(x = NULL, y = list( #custom scales for each facet
+      SEPU = scale_y_continuous(limits = c(0,0.075)),
+      PACL = scale_y_continuous(limits = c(0,0.15)),
+      PANE = scale_y_continuous(limits = c(0,0.24)),
+      EMJA = scale_y_continuous(limits = c(0,0.15)),
+      CHPU = scale_y_continuous(limits = c(0,1.0)),
+      OXCA = scale_y_continuous(limits = c(0,1.0))
+    ))+
+    scale_x_continuous(breaks = seq(0,xlim, 10),
+                       limits = c(0,NA))+  #scale x to be max lenght at increment of 5cm
+    labs(x = "Total Length (mm)",    #edit axis & legend labels
+         y = "Density", 
+         color = "Year",
+         title = element_text("Size distribution on Artifical Reef (WNR)"))+
+    scale_color_viridis_d()+  #color palatte
+    theme_classic()+
+    theme(panel.background = element_rect(fill = "grey90", color = "black"),
+          plot.title = element_text(hjust = 0.5, size = 40),
+          axis.text = element_text(size = 30),
+          axis.title = element_text(size = 17),
+          strip.text = element_text(size = 30),
+          legend.text = element_text(size = 30),
+          legend.key.size = unit(1.5,"cm"),
+          legend.title = element_text(size = 50)) #remove lengend for ggarrange
+  p1
+
+  p2 <- data %>% filter(reef_code%in% reefnr) %>% 
+    mutate(year = as_factor(year)) %>% 
+    ggplot()+   #specify x & solor by year
+    geom_density(
+      aes(x = total_length, color = year, group = year),linewidth = 1.5)+   #use density plot
+    facet_wrap(~species_code, ncol=1, scales = "free")+ #separate plots by species
+    ggh4x::facetted_pos_scales(x = NULL, y = list( #custom scales for each facet
+      SEPU = scale_y_continuous(limits = c(0,0.075)),
+      PACL = scale_y_continuous(limits = c(0,0.15)),
+      PANE = scale_y_continuous(limits = c(0,0.24)),
+      EMJA = scale_y_continuous(limits = c(0,0.15)),
+      CHPU = scale_y_continuous(limits = c(0,1.0)),
+      OXCA = scale_y_continuous(limits = c(0,1.0))
+    ))+
+    scale_x_continuous(breaks = seq(0,xlim, 10),
+                       limits = c(0,NA))+  #scale x to be max lenght
+    labs(x = "Total Length (mm)",    #edit axis & legend labels
+         y = "Density", 
+         color = "Year",
+         title = element_text("Size distribution on Natural Reefs (BK & SMK)"))+
+    # scale_color_viridis_d()+  #color palatte
+    scale_fill_manual( values = c("#440154","#481467", "#482576","#453781","#404688","#39558c",
+                                           "#33638d","#2d718e","#287d8e","#238a8d","#1f968b",
+                                           "#20a386","#29af7f","#3dbc74","#56c667","#75d054","#95d840",
+                                           "#bade28","#dde318","#fde725"),
+                                           aesthetics = c("color", "fill"),
+                       name = "Year")+
+    theme_classic()+
+    theme(panel.background = element_rect(fill = "grey90", color = "black"),
+          plot.title = element_text(hjust = 0.5, size = 40),
+          axis.text = element_text(size = 30),
+          axis.title = element_text(size = 17),
+          strip.text = element_text(size = 30),
+          legend.text = element_text(size = 30),
+          legend.key.size = unit(1.5,"cm"),
+          legend.title = element_text(size = 50))
+  p2
+  
+  arrange <- ggarrange((p1+rremove("xlab")+rremove("ylab")+rremove("legend"))+(p2+rremove("ylab")+rremove("xlab")),
+                       labels = NULL,
+                       common.legend = TRUE,
+                       legend = "right")
+  annotate_figure(arrange, 
+                  left = text_grob("Density", #add common axis
+                                   rot = 90, 
+                                   size = 45),
+                  bottom = text_grob("Total Length (mm)",
+                                     size = 45))+
+    theme(plot.margin = margin(1,1,1,1, "cm"))
+  ggsave(here("output", title),
+         width = 25, height = 33)
+}
+
+
+# ar_nr(songs_count,"WNR",75,c("BK","SMK"), "test.png")
+  
+#####------------Make graphs for individual species-----######
+species_reefs <- function(data,species, reefar,xlim,ylim, yinterval, reefbk,reefsmk, reefnr, title, arnr_filename, reefs_filename){
+  p1 <- ggplot(songs_count %>% filter(reef_code%in% reefar,
+                                      species_code%in% {{species}})%>% 
+                 mutate(year = as_factor(year)),    #data 
+               aes(x = total_length, fill = year))+   #specify x & solor by year
+    geom_density()+  #use density plot
+    facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
+    scale_x_continuous(breaks = seq(0,xlim, 10),
+                       limits = c(0,NA))+  #scale x to be max lenght at increment of 5cm
+    scale_y_continuous(breaks = seq(0,ylim, yinterval),
+                       limits = c(0,ylim))+ #scale y tick mark
+    labs(x = "Total Length (mm)",    #edit axis & legend labels
+         y = "Density", 
+         fill = "Year",
+         title = element_text("Artificial Reef"))+
+    scale_fill_viridis_d()+  #color palatte
+    theme_classic()+
+    theme(panel.background = element_rect(fill = "grey96", color = "black"),
+          plot.title = element_text(hjust = 0.5),
+          legend.position = "none",
+          panel.spacing = unit(1, "mm"),
+          strip.text = element_blank())
+  p1
+  
+  p2 <- ggplot(data %>%  #both natural reefs
+                 filter(reef_code%in% c({{reefnr}}),
+                        species_code%in% {{species}}) %>% 
+                 mutate(year = as_factor(year)),    #data 
+               aes(x = total_length, fill = year))+   #specify x & solor by year
+    geom_density()+   #use densiity plot
+    facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
+    scale_x_continuous(breaks = seq(0,xlim, 10),
+                       limits = c(0,NA))+  #scale x to be max length
+    scale_y_continuous(breaks = seq(0,ylim, yinterval),
+                       limits = c(0,ylim))+ #scale y tick mark
+    labs(x = "Total Length (mm)",    #edit axis & legend labels
+         y = "Density", 
+         fill = "Year",
+         title = element_text("Natural Reefs"))+
+    scale_fill_viridis_d()+  #color palatte
+    theme_classic()+
+    theme(panel.background = element_rect(fill = "grey96", color = "black"),
+          plot.title = element_text(hjust = 0.5),
+          panel.spacing = unit(1, "mm"),
+          strip.text = element_blank(),
+          legend.position = "none")
+  
+  p2.1 <- ggplot(songs_count %>% 
+                   filter(reef_code%in% reefbk,
+                          species_code%in%species) %>% 
+                   mutate(year = as_factor(year)),    #data 
+                 aes(x = total_length, fill = year))+   #specify x & solor by year
+    geom_density()+   #use densiity plot
+    facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
+    scale_x_continuous(breaks = seq(0,xlim, 10),
+                       limits = c(0,NA))+  #scale x to be max length
+    scale_y_continuous(breaks = seq(0,ylim, yinterval),
+                       limits = c(0,ylim))+ #scale y tick mark
+    labs(x = "Total Length (mm)",    #edit axis & legend labels
+         y = "Density", 
+         fill = "Year",
+         title = element_text("BK"))+
+    scale_fill_viridis_d()+  #color palatte
+    theme_classic()+
+    theme(panel.background = element_rect(fill = "grey96", color = "black"),
+          plot.title = element_text(hjust = 0.5),
+          panel.spacing = unit(1, "mm"),
+          strip.text = element_blank(),
+          legend.position = "none")
+  
+  p2.2 <- ggplot(songs_count %>% filter(reef_code%in% reefsmk,
+                                        species_code%in%species)%>% 
+                   mutate(year = as_factor(year)),    #data 
+                 aes(x = total_length, fill = year))+   #specify x & solor by year
+    geom_density()+   #use densiity plot
+    facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
+    scale_x_continuous(breaks = seq(0,xlim, 10),
+                       limits = c(0,NA))+  #scale x to be max length
+    scale_y_continuous(breaks = seq(0,ylim, yinterval),
+                       limits = c(0,ylim))+ #scale y tick mark
+    labs(x = "Total Length (mm)",    #edit axis & legend labels
+         y = "Density", 
+         fill = "Year",
+         title = element_text("SMK"))+
+    scale_fill_viridis_d()+  #color palatte
+    theme_classic()+
+    theme(panel.background = element_rect(fill = "grey96", color = "black"),
+          plot.title = element_text(hjust = 0.5),
+          panel.spacing = unit(1, "mm"),
+          strip.text = element_blank(),
+          legend.position = "none")
+  
+  #combine both plots - by ar/nr
+  combined <- ggarrange(p1+
+                          p2+ rremove("ylab"),
+                        # p2.2+rremove("ylab")+
+                        # p2.1+rremove("ylab"),
+                        common.legend = TRUE, 
+                        legend = "right")
+  #add title at the top of the graph
+  annotate_figure(combined,
+                  top = text_grob(title, 
+                                  face = "bold",
+                                  size = 14))
+  
+  ggsave(here("output", arnr_filename),
+         width = 9, height = 6)
+
+#Individual reefs
+  combined <- ggarrange(p1+
+                        p2.2+rremove("ylab")+
+                        p2.1+rremove("ylab"),
+                        common.legend = TRUE, 
+                        legend = "right")
+  #add title at the top of the graph
+  annotate_figure(combined,
+                  top = text_grob(title, 
+                                  face = "bold",
+                                  size = 14))
+  
+  ggsave(here("output", reefs_filename),
+         width = 9, height = 6)
+}
+
+
+
+
+####------------import data----------#####
 songs <- read.csv(here("data","songs_clean.csv"))
 glimpse(songs)
-
-
-#Data analysis
-#plot one specie  
-# songs %>% group_by( year,total_length, species_code, reef_code) %>% 
-#   mutate(species_code = as_factor(factor(species_code, levels = c( "SEPU","PACL","PANE","EMJA","CHPU","OXCA"))),
-#          total_length = as.numeric(total_length)) %>% 
-#   summarise(count = sum(count)) %>% 
-#   filter(species_code == "SEPU") %>% 
-#   uncount(count) %>% 
-#   ggplot(aes(x = total_length))+
-#   geom_histogram(aes(fill = species_code),
-#                  binwidth = 1)+
-#   geom_freqpoly(binwidth = 3)+
-#   scale_x_continuous(breaks = seq(0,max(songs$total_length),5))+
-#     facet_wrap(~year)
   
-#plot same specie on the same plot
 #Data wrangle to have numeric density by size
 songs_count <- songs %>% 
   group_by( year,total_length, species_code, reef_code) %>%  #group analysis 
@@ -90,8 +306,19 @@ size_summary <- songs_year %>%
             sd = sd(total_length),
             se = se(total_length))
 
+
+
+
+
 #Number of YOY
-EMJA_YOYSUM <- fishYOY(songs_count_sum, "EMJA", 13, "WNR")
+emja_yoy <- yoy(songs_count_sum, "EMJA", 13)
+pacl_yoy <- yoy(songs_count_sum, "PACL", 7.62)
+chpu_yoy <- yoy(songs_count_sum, "CHPU", 7.62)
+sepu_yoy <- yoy(songs_count_sum, "SEPU", 7.62)
+pane_yoy <- yoy(songs_count_sum, "PANE", 7.62)
+oxca_yoy<- yoy(songs_count_sum, "OXCA", 7.62)
+
+
 PACL_YOYSUM <- fishYOY(songs_count_sum, "PACL", 7.62, "WNR")
 CHPU_YOYSUM <- fishYOY(songs_count_sum, "CHPU", 7.62, "WNR")
 SEPU_YOYSUM <- fishYOY(songs_count_sum, "SEPU", 7.62, "WNR")
@@ -99,333 +326,36 @@ PANE_YOYSUM <- fishYOY(songs_count_sum, "PANE", 7.62, "WNR")
 OXCA_YOYSUM <- fishYOY(songs_count_sum, "OXCA", 7.62, "WNR")
 
 #######-----------Plot----------##########
-# #Plot size distribution on WNR
-# p1 <- ggplot(songs_count %>% filter(reef_code%in% "WNR"),    #data 
-#        aes(x = total_length, color = year))+   #specify x & solor by year
-#   geom_freqpoly(binwidth = 3)+   #use frequency polygon
-#     facet_wrap(~species_code, scales = "free")+    #separate plots by species
-#   scale_x_continuous(breaks = seq(0,max(songs$total_length), 5),
-#                      limits = c(0,NA))+  #scale x to be max lenght at increment of 5cm
-#   labs(x = "Total Length (mm)",    #edit axis & legend labels
-#        y = "Count", 
-#        color = "Year",
-#        title = element_text("Size distribution on WNR"))+
-#   scale_color_viridis_d()+  #color palatte
-#   theme_classic()+
-#   theme(panel.background = element_rect(fill = "grey96", color = "black"),
-#         plot.title = element_text(hjust = 0.5),
-#         legend.position = "none")
-#   # ggsave(here("Plots", "size_distribution_WNR.pdf"),
-#   #        width = 20, height = 10)
-# 
-# #plot size distribution on natural reefs
-# p2 <- ggplot(songs_count %>% filter(reef_code%in% c("BK","SMK")),    #data 
-#        aes(x = total_length, color = year))+   #specify x & solor by year
-#   geom_freqpoly(binwidth = 3)+   #use frequency polygon
-#   facet_wrap(~species_code, scales = "free")+    #separate plots by species
-#   scale_x_continuous(breaks = seq(0,max(songs$total_length), 5),
-#                      limits = c(0,NA))+  #scale x to be max lenght
-#   labs(x = "Total Length (mm)",    #edit axis & legend labels
-#        y = "Count", 
-#        color = "Year",
-#        title = element_text("Size distribution on BK & SMK"))+
-#   scale_color_viridis_d()+  #color palatte
-#   theme_classic()+
-#   theme(panel.background = element_rect(fill = "grey96", 
-#                                         color = "black"),
-#         plot.title = element_text(hjust = 0.5))
-# # ggsave(here("Plots", "size_distribution_BK_SMK.pdf"),
-# #        width = 20, height = 10)
-# 
-# 
-# p1/p2 #use patchwork to stack plots
-# ggarrange((p1+rremove("xlab"))/p2, common.legend = TRUE, legend = "right")
-# ggsave(here("Plots", "AR_NR_stacked_sizedistribution.pdf"),
-#        width = 15, height = 10)
 
+#SEPU
+species_reefs(songs_count, "SEPU", "WNR", 75, 0.1, 0.08, "BK","SMK",c("BK","SMK"),
+              "Size distribution of California Sheephead",
+              arnr_filename =  "Test_AR_NR_density_distribution.pdf",
+              reefs_filename = "Test_site_density_distribution.pdf")
 
-#####------UPDATE WITH DENSITY PLOTS - AR & NR------
-p1 <- ggplot(songs_count %>% filter(reef_code%in% "WNR") %>% 
-               mutate(year = as_factor(year)),    #data 
-             aes(x = total_length, color = year))+   #specify x & solor by year
-  geom_density(linewidth = 1.5)+   #use density plot
-  facet_wrap(~species_code,ncol=1, scales = "free")+    #separate plots by species
-  ggh4x::facetted_pos_scales(x = NULL, y = list( #custom scales for each facet
-    SEPU = scale_y_continuous(limits = c(0,0.075)),
-    PACL = scale_y_continuous(limits = c(0,0.15)),
-    PANE = scale_y_continuous(limits = c(0,0.24)),
-    EMJA = scale_y_continuous(limits = c(0,0.15)),
-    CHPU = scale_y_continuous(limits = c(0,0.9)),
-    OXCA = scale_y_continuous(limits = c(0,1.0))
-  ))+
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max lenght at increment of 5cm
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       color = "Year",
-       title = element_text("Size distribution on Artifical Reef (WNR)"))+
-  scale_color_viridis_d()+  #color palatte
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey90", color = "black"),
-        plot.title = element_text(hjust = 0.5, size = 40),
-        axis.text = element_text(size = 30),
-        axis.title = element_text(size = 17),
-        strip.text = element_text(size = 30),
-        legend.text = element_text(size = 30),
-        legend.key.size = unit(1.5,"cm"),
-        legend.title = element_text(size = 50)) #remove lengend for ggarrange
-p1
-# ggsave(here("output", "size_densitydistribution_WNR.pdf"),
-#        width = 20, height = 10)
+#PACL
+species_reefs(songs_count, "PACL", "WNR", 75, 0.2, 0.15, "BK","SMK",c("BK","SMK"),
+              "Size distribution of Kelp Bass",
+              arnr_filename =  "PACL_AR_NR_density_distribution.pdf",
+              reefs_filename = "PACL_site_density_distribution.pdf")
 
-p2 <- songs_count %>% filter(reef_code%in% c("BK","SMK")) %>% 
-  mutate(year = as_factor(year)) %>% 
-  ggplot()+   #specify x & solor by year
-  geom_density(
-    aes(x = total_length, color = year, group = year),linewidth = 1.5)+   #use density plot
-  facet_wrap(~species_code, ncol=1, scales = "free")+ #separate plots by species
-  ggh4x::facetted_pos_scales(x = NULL, y = list( #custom scales for each facet
-    SEPU = scale_y_continuous(limits = c(0,0.075)),
-    PACL = scale_y_continuous(limits = c(0,0.15)),
-    PANE = scale_y_continuous(limits = c(0,0.24)),
-    EMJA = scale_y_continuous(limits = c(0,0.15)),
-    CHPU = scale_y_continuous(limits = c(0,0.9)),
-    OXCA = scale_y_continuous(limits = c(0,1.0))
-  ))+
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max lenght
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       color = "Year",
-       title = element_text("Size distribution on Natural Reefs (BK & SMK)"))+
-  # scale_color_viridis_d()+  #color palatte
-  scale_fill_manual( values = c("#440154","#481f70","#443983",
-                                        "#3b528b","#31688e","#287c8e",
-                                       "#21918c","#20a486", "#35b779",
-                                       "#5ec962", "#90d743","#c8e020",
-                                       "#fde725"),
-                    aesthetics = c("color", "fill"),
-                    name = "Year")+
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey90", color = "black"),
-        plot.title = element_text(hjust = 0.5, size = 40),
-        axis.text = element_text(size = 30),
-        axis.title = element_text(size = 17),
-        strip.text = element_text(size = 30),
-        legend.text = element_text(size = 30),
-        legend.key.size = unit(1.5,"cm"),
-        legend.title = element_text(size = 50))
+#CHPU
+species_reefs(songs_count, "CHPU", "WNR", 75, 1.4, 0.5, "BK","SMK",c("BK","SMK"),
+              "Size distribution of Blacksmith",
+              arnr_filename =  "CHPU_AR_NR_density_distribution.pdf",
+              reefs_filename = "CHPU_site_density_distribution.pdf")
 
-p2
-# ggsave(here("output", "size_densitydistribution_BK_SMK.pdf"),
-#        width = 20, height = 10)
+#EMJA
+species_reefs(songs_count, "EMJA", "WNR", 75, 0.2, 0.15, "BK","SMK",c("BK","SMK"),
+              "Size distribution of Black Perch",
+              arnr_filename =  "EMJA_AR_NR_density_distribution.pdf",
+              reefs_filename = "EMJA_site_density_distribution.pdf")
 
-# COMBINE THE PLOTS TO HAVE ONE PLOT
-arrange <- ggarrange((p1+rremove("xlab")+rremove("ylab")+rremove("legend"))+(p2+rremove("ylab")+rremove("xlab")),
-          labels = NULL,
-          common.legend = TRUE,
-          legend = "right")
-annotate_figure(arrange, 
-                left = text_grob("Density", #add common axis
-                                rot = 90, 
-                                size = 45),
-                bottom = text_grob("Total Length (mm)",
-                                  size = 45))+
-  theme(plot.margin = margin(1,1,1,1, "cm"))
-# ggsave(here("output", "scaledAR_NR_density_sizedistribution.pdf"),
-#        width = 25, height = 33)
-
-
-##### ---------------- Density plot of individual reefs----
-
-p2.1 <- songs_count %>% filter(reef_code%in% c("BK")) %>% 
-  mutate(year = as_factor(year)) %>% 
-  ggplot()+   #specify x & solor by year
-  geom_density(
-    aes(x = total_length, color = year, group = year),linewidth = 1.5)+   #use density plot
-  facet_wrap(~species_code, ncol=1, scales = "free")+    #separate plots by species
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max lenght
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       color = "Year",
-       title = element_text("BK"))+
-  # scale_color_viridis_d()+  #color palatte
-  scale_fill_manual( values = c("#440154","#481f70","#443983",
-                                         "#3b528b","#31688e","#287c8e",
-                                         "#21918c","#20a486", "#35b779",
-                                         "#5ec962", "#90d743","#c8e020",
-                                         "#fde725"),
-                                         aesthetics = c("color", "fill"),
-                     name = "Year")+
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey90", color = "black"),
-        plot.title = element_text(hjust = 0.5, size = 40),
-        axis.text = element_text(size = 30),
-        axis.title = element_text(size = 17),
-        strip.text = element_text(size = 30),
-        legend.text = element_text(size = 30),
-        legend.key.size = unit(1.5,"cm"),
-        legend.title = element_text(size = 50))
-
-p2.2 <- songs_count %>% filter(reef_code%in% c("SMK")) %>% 
-  mutate(year = as_factor(year)) %>% 
-  ggplot()+   #specify x & solor by year
-  geom_density(
-    aes(x = total_length, color = year, group = year),linewidth = 1.5)+   #use density plot
-  facet_wrap(~species_code, ncol=1, scales = "free")+    #separate plots by species
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max lenght
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       color = "Year",
-       title = element_text("SMK"))+
-  # scale_color_viridis_d()+  #color palatte
-  scale_fill_manual( values = c("#440154","#481f70","#443983",
-                                         "#3b528b","#31688e","#287c8e",
-                                         "#21918c","#20a486", "#35b779",
-                                         "#5ec962", "#90d743","#c8e020",
-                                         "#fde725"),
-                                         aesthetics = c("color", "fill"),
-                     name = "Year")+
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey90", color = "black"),
-        plot.title = element_text(hjust = 0.5, size = 40),
-        axis.text = element_text(size = 30),
-        axis.title = element_text(size = 17),
-        strip.text = element_text(size = 30),
-        legend.text = element_text(size = 30),
-        legend.key.size = unit(1.5,"cm"),
-        legend.title = element_text(size = 50))
-
-
-
-arrange <- ggarrange((p1+rremove("xlab")+rremove("ylab")+rremove("legend"))+
-                       (p2.1+rremove("ylab")+rremove("xlab")+rremove("legend"))+
-                       (p2.2+rremove("ylab")+rremove("xlab")),
-                     labels = NULL,
-                     common.legend = TRUE,
-                     legend = "right")
-annotate_figure(arrange, 
-                left = text_grob("Density", #add common axis
-                                 rot = 90, 
-                                 size = 45),
-                bottom = text_grob("Total Length (mm)",
-                                   size = 45))+
-  theme(plot.margin = margin(1,1,1,1, "cm"))
-ggsave(here("output", "AR_BK_SMK_density_sizedistribution.pdf"),
-       width = 25, height = 33)
-
-
-
-#####----------------- Density plot of individual species across AR or NR-------
-
-p1 <- ggplot(songs_count %>% filter(reef_code%in% "WNR",
-                                    species_code%in% "SEPU")%>% 
-               mutate(year = as_factor(year)),    #data 
-             aes(x = total_length, fill = year))+   #specify x & solor by year
-  geom_density()+  #use density plot
-  facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
-  scale_x_continuous(breaks = seq(0,75, 10),
-                     limits = c(0,NA))+  #scale x to be max lenght at increment of 5cm
-  scale_y_continuous(breaks = seq(0,0.07, 0.05),
-                     limits = c(0,0.07))+ #scale y tick mark
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       fill = "Year",
-       title = element_text("Artificial Reef"))+
-  scale_fill_viridis_d()+  #color palatte
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey96", color = "black"),
-        plot.title = element_text(hjust = 0.5),
-        legend.position = "none",
-        panel.spacing = unit(1, "mm"),
-        strip.text = element_blank())
-
-p2 <- ggplot(songs_count %>%  #both natural reefs
-                 filter(reef_code%in% c("BK","SMK"),
-                        species_code%in%"SEPU") %>% 
-                 mutate(year = as_factor(year)),    #data 
-               aes(x = total_length, fill = year))+   #specify x & solor by year
-  geom_density()+   #use densiity plot
-  facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max length
-  scale_y_continuous(breaks = seq(0,0.07, 0.05),
-                     limits = c(0,0.07))+ #scale y tick mark
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       fill = "Year",
-       title = element_text("Natural Reef"))+
-  scale_fill_viridis_d()+  #color palatte
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey96", color = "black"),
-        plot.title = element_text(hjust = 0.5),
-        panel.spacing = unit(1, "mm"),
-        strip.text = element_blank(),
-        legend.position = "none")
-
-
-p2.1 <- ggplot(songs_count %>% 
-                 filter(reef_code%in% "BK",
-                        species_code%in%"SEPU") %>% 
-                 mutate(year = as_factor(year)),    #data 
-             aes(x = total_length, fill = year))+   #specify x & solor by year
-  geom_density()+   #use densiity plot
-  facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max length
-  scale_y_continuous(breaks = seq(0,0.12, 0.1),
-                     limits = c(0,0.12))+ #scale y tick mark
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       fill = "Year",
-       title = element_text("BK"))+
-  scale_fill_viridis_d()+  #color palatte
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey96", color = "black"),
-        plot.title = element_text(hjust = 0.5),
-        panel.spacing = unit(1, "mm"),
-        strip.text = element_blank(),
-        legend.position = "none")
-
-p2.2 <- ggplot(songs_count %>% filter(reef_code%in% "SMK",
-                                      species_code%in%"SEPU")%>% 
-                 mutate(year = as_factor(year)),    #data 
-             aes(x = total_length, fill = year))+   #specify x & solor by year
-  geom_density()+   #use densiity plot
-  facet_wrap(~year, ncol = 1, scales = "free_y")+    #separate plots by species
-  scale_x_continuous(breaks = seq(0,max(songs$total_length), 10),
-                     limits = c(0,NA))+  #scale x to be max length
-  scale_y_continuous(breaks = seq(0,0.12, 0.1),
-                     limits = c(0,0.12))+ #scale y tick mark
-  labs(x = "Total Length (mm)",    #edit axis & legend labels
-       y = "Density", 
-       fill = "Year",
-       title = element_text("SMK"))+
-  scale_fill_viridis_d()+  #color palatte
-  theme_classic()+
-  theme(panel.background = element_rect(fill = "grey96", color = "black"),
-        plot.title = element_text(hjust = 0.5),
-        panel.spacing = unit(1, "mm"),
-        strip.text = element_blank(),
-        legend.position = "none")
-
-#combine both plots
-combined <- ggarrange(p1+
-                      p2+ rremove("ylab"),
-                        # p2.2+rremove("ylab")+
-                        # p2.1+rremove("ylab"),
-                      common.legend = TRUE, 
-                      legend = "right")
-#add title at the top of the graph
-annotate_figure(combined,
-                top = text_grob("Size Distrbution of California Sheephead", 
-                                face = "bold",
-                                size = 14))
-
-ggsave(here("output", "SEPU_AR_NR_density_distribution.pdf"),
-       width = 9, height = 6)
+#OXCA
+species_reefs(songs_count, "OXCA", "WNR", 75, 1.0, 0.4, "BK","SMK",c("BK","SMK"),
+              "Size distribution of Señorita",
+              arnr_filename =  "OXCA_AR_NR_density_distribution.pdf",
+              reefs_filename = "OXCA_site_density_distribution.pdf")
 
 #####-------Size simmary with before-after-heatwave-----
 

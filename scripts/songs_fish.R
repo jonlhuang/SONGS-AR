@@ -12,34 +12,45 @@ library(ggh4x) #additional axis
 
 se <- function(x) sd(x)/sqrt(length(x))
 
-fishYOY <- function(data,species,length,reef) {
+fishYOY <- function(data,species,length) {
   data %>% 
     filter(species_code == {{species}},
-           total_length<length,
+           total_length<=length) %>% 
+    uncount(count)%>% 
+    mutate(n = 1) %>% 
+    group_by(year, species_code, reef_code, transect_code, total_length) %>% 
+    summarise(n = sum(n))
+} #number of fish at size at site at year at transect
+
+fishYOY_sum <- function(data,species,length,reef) { 
+  data %>% 
+    filter(species_code == {{species}},
+           total_length<=length,
            reef_code%in%{{reef}}) %>% 
+    uncount(count) %>% 
     mutate(count = 1) %>% 
     group_by(year) %>% 
     summarize(count = sum(count))
-}
+}#summarize the abundance of YOY by size 
 
 yoy <- function(data,species,size){
-  wnr <- fishYOY(data, species, size, "WNR")
-  bk <- fishYOY(data, species, size, "BK")
-  smk <- fishYOY(data, species, size, "SMK")
-  year <- data_frame(year = as_factor(c(2000:2021))) 
-  YOY <- list(wnr,smk,bk)
+  wnr <- fishYOY_sum(data, species, size, "WNR") #take YOY aboundance from every site 
+  bk <- fishYOY_sum(data, species, size, "BK")
+  smk <- fishYOY_sum(data, species, size, "SMK")
+  year <- data_frame(year = as_factor(c(2000:2021))) #make a list with all years to show every year
+  YOY <- list(wnr,smk,bk) #make all sites into one list
   
-  left_join(year, YOY %>% #join year to have all years, with combined list of all reefs
-    reduce(full_join, #combine using reduce with function "full_join"
+  left_join(year, #join year to have all years, with combined list of all reefs
+            YOY %>% 
+    reduce(full_join, #combine list using reduce with function "full_join" to have all reefs on one df
            by = "year") %>% 
     rename("WNR" = count.x, #rename columns to site names
            "SMK" = count.y ,
            "BK" = count)
      )
-}
+} #summarize the total abundundance of YOY by year
 
-pane_yoy <- yoy(songs_count_sum, "PANE", 7.62)
-  
+#graph of all species on one
 ar_nr <- function(data,reefar,xlim,reefnr, title){
   p1 <- ggplot(data %>% filter(reef_code%in% {{reefar}}) %>% 
                  mutate(year = as_factor(year)),    #data 
@@ -93,26 +104,26 @@ ar_nr <- function(data,reefar,xlim,reefnr, title){
          color = "Year",
          title = element_text("Size distribution on Natural Reefs (BK & SMK)"))+
     # scale_color_viridis_d()+  #color palatte
-    scale_fill_manual( values = c("#440154","#481467", "#482576","#453781","#404688","#39558c",
+    scale_fill_manual( values = c("#440154","#481467", "#482576","#453781","#404688","#39558c", #manually fill in legend
                                            "#33638d","#2d718e","#287d8e","#238a8d","#1f968b",
                                            "#20a386","#29af7f","#3dbc74","#56c667","#75d054","#95d840",
                                            "#bade28","#dde318","#fde725"),
                                            aesthetics = c("color", "fill"),
                        name = "Year")+
-    theme_classic()+
+    theme_classic()+ #edit theme
     theme(panel.background = element_rect(fill = "grey90", color = "black"),
           plot.title = element_text(hjust = 0.5, size = 40),
           axis.text = element_text(size = 30),
           axis.title = element_text(size = 17),
-          strip.text = element_text(size = 30),
-          legend.text = element_text(size = 30),
-          legend.key.size = unit(1.5,"cm"),
+          strip.text = element_text(size = 30), #facet font size 
+          legend.text = element_text(size = 30), #legend font size
+          legend.key.size = unit(1.5,"cm"), #legend key size
           legend.title = element_text(size = 50))
   p2
   
-  arrange <- ggarrange((p1+rremove("xlab")+rremove("ylab")+rremove("legend"))+(p2+rremove("ylab")+rremove("xlab")),
-                       labels = NULL,
-                       common.legend = TRUE,
+  arrange <- ggarrange((p1+rremove("xlab")+rremove("ylab")+rremove("legend"))+(p2+rremove("ylab")+rremove("xlab")), #edit which axis labels to keep
+                       labels = NULL, 
+                       common.legend = TRUE, #have one single legend for both garphs
                        legend = "right")
   annotate_figure(arrange, 
                   left = text_grob("Density", #add common axis
@@ -120,15 +131,12 @@ ar_nr <- function(data,reefar,xlim,reefnr, title){
                                    size = 45),
                   bottom = text_grob("Total Length (mm)",
                                      size = 45))+
-    theme(plot.margin = margin(1,1,1,1, "cm"))
+    theme(plot.margin = margin(1,1,1,1, "cm")) #add margin space
   ggsave(here("output", title),
          width = 25, height = 33)
 }
 
-
-# ar_nr(songs_count,"WNR",75,c("BK","SMK"), "test.png")
-  
-#####------------Make graphs for individual species-----######
+#graph of individual species
 species_reefs <- function(data,species, reefar,xlim,ylim, yinterval, reefbk,reefsmk, reefnr, title, arnr_filename, reefs_filename){
   p1 <- ggplot(songs_count %>% filter(reef_code%in% reefar,
                                       species_code%in% {{species}})%>% 
@@ -260,7 +268,7 @@ species_reefs <- function(data,species, reefar,xlim,ylim, yinterval, reefbk,reef
 songs <- read.csv(here("data","songs_clean.csv"))
 glimpse(songs)
   
-#Data wrangle to have numeric density by size
+#Data wrangle to have individual fish per row
 songs_count <- songs %>% 
   group_by( year,total_length, species_code, reef_code) %>%  #group analysis 
   mutate(species_code = as_factor(factor(species_code,   #reorder the factors
@@ -268,29 +276,30 @@ songs_count <- songs %>%
          total_length = as.numeric(total_length), #change length to numeric
          reef_code = as_factor(reef_code),
          year = as.numeric(year)) %>%    
-  summarise(count = sum(count), #sum the count through the years
-            total_area_sampled = sum(total_area_sampled)) %>%    
-  mutate(size_density = count/total_area_sampled) %>% 
+  summarise(count = sum(count)) %>%     #sum the count through the years
   uncount(count) %>%                   #reorder so each row = 1 count
-  select(year, species_code,reef_code,total_length,total_area_sampled, size_density) #reorder df order
+  select(year, species_code,reef_code,total_length) %>%  #reorder df order
+  mutate(n = 1)
 
-#summary data
+#summary data 
 songs_count_sum <- songs %>% 
-  group_by( year,total_length, species_code, reef_code) %>%  #group analysis 
+  group_by( year,total_length, species_code, reef_code,transect_code) %>%  #group analysis 
   mutate(species_code = as_factor(factor(species_code,   #reorder the factors
                                          levels = c( "SEPU","PACL","PANE","EMJA","CHPU","OXCA"))),
          total_length = as.numeric(total_length), #change length to numeric
          reef_code = as_factor(reef_code),
          year = as_factor(year)) %>%    
-  summarise(count = sum(count), #sum the count through the years
-            total_area_sampled = sum(total_area_sampled)) %>%    
-  mutate(size_density = count/total_area_sampled)%>% 
-  group_by( year,total_length, species_code, reef_code) %>% 
-  summarise(size_density = sum(size_density))
+  summarise(count = sum(count)) #sum the count through the years
+            # total_area_sampled = sum(total_area_sampled)  
+  # mutate(size_density = count/total_area_sampled)%>% 
+  # group_by( year,total_length, species_code, reef_code) %>% 
+  # summarise(size_density = sum(size_density))
 
-#######-----------Exploration----------##########
 
-songs_year <- songs_count %>% 
+
+#######-----------Exploration for environemnt----------##########
+
+songs_year <- songs_count %>%  #add labels to re or post-blob by size
   drop_na() %>% 
   mutate( blob_case =  case_when(year<2013 ~"pre-blob",
                     year>=2013 & year<=2016 ~"blob",
@@ -300,7 +309,7 @@ songs_year <- songs_count %>%
                                        levels = c("pre-blob","blob","post-blob")))
   )
     
-size_summary <- songs_year %>% 
+size_summary <- songs_year %>%  #summarize size by category
   group_by(blob_case,species_code) %>% 
   summarize(mean = mean(total_length),
             sd = sd(total_length),
@@ -310,22 +319,24 @@ size_summary <- songs_year %>%
 
 
 
-#Number of YOY
-emja_yoy <- yoy(songs_count_sum, "EMJA", 13)
-pacl_yoy <- yoy(songs_count_sum, "PACL", 7.62)
-chpu_yoy <- yoy(songs_count_sum, "CHPU", 7.62)
-sepu_yoy <- yoy(songs_count_sum, "SEPU", 7.62)
-pane_yoy <- yoy(songs_count_sum, "PANE", 7.62)
-oxca_yoy<- yoy(songs_count_sum, "OXCA", 7.62)
+####-----Number of YOY-----
 
+yoy_emja <- yoy(songs_count_sum, "EMJA", 13)
+yoy_pacl <- yoy(songs_count_sum, "PACL", 7.62)
+yoy_chpu <- yoy(songs_count_sum, "CHPU", 7.62)
+yoy_sepu <- yoy(songs_count_sum, "SEPU", 7.62)
+yoy_pane <- yoy(songs_count_sum, "PANE", 7.62)
+yoy_oxca<- yoy(songs_count_sum, "OXCA", 7.62)
 
-PACL_YOYSUM <- fishYOY(songs_count_sum, "PACL", 7.62, "WNR")
-CHPU_YOYSUM <- fishYOY(songs_count_sum, "CHPU", 7.62, "WNR")
-SEPU_YOYSUM <- fishYOY(songs_count_sum, "SEPU", 7.62, "WNR")
-PANE_YOYSUM <- fishYOY(songs_count_sum, "PANE", 7.62, "WNR")
-OXCA_YOYSUM <- fishYOY(songs_count_sum, "OXCA", 7.62, "WNR")
+#abundance and size of 
+yoy <- fishYOY(songs, "EMJA", 13) 
+
 
 #######-----------Plot----------##########
+
+#all species and plots on an ar_nr
+ar_nr(songs_count,"WNR",75,c("BK","SMK"), "AR_NR_density_sizedistribution.pdf")
+
 
 #SEPU
 species_reefs(songs_count, "SEPU", "WNR", 75, 0.1, 0.08, "BK","SMK",c("BK","SMK"),

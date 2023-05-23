@@ -1,17 +1,18 @@
 #### Data exploration of SONGS size structured data
 
 
-#load libraries
+####-----load libraries-----
 library(tidyverse)
 library(here)
 library(patchwork)
 library(ggpubr)
 library(ggh4x) #additional axis 
 
-#function
+####-------functions-----
 
 se <- function(x) sd(x)/sqrt(length(x))
 
+#--- YOY data
 fishYOY <- function(data,species,length) {
   data %>% 
     filter(species_code == {{species}},
@@ -34,23 +35,67 @@ fishYOY_sum <- function(data,species,length,reef) {
 }#summarize the abundance of YOY by size 
 
 yoy <- function(data,species,size){
-  wnr <- fishYOY_sum(data, species, size, "WNR") #take YOY aboundance from every site 
+  wnr <- fishYOY_sum(data, species, size, "WNR")#take YOY aboundance from every site 
+  # %>% 
+  #  mutate( count = case_when(.$year %in% c(2000:2006) == NA ~ 0, 
+  #             TRUE ~ fishYOY_sum(data, species, size, "WNR")))
+
   bk <- fishYOY_sum(data, species, size, "BK")
+  
   smk <- fishYOY_sum(data, species, size, "SMK")
   year <- data_frame(year = as_factor(c(2000:2021))) #make a list with all years to show every year
   YOY <- list(wnr,smk,bk) #make all sites into one list
   
-  left_join(year, #join year to have all years, with combined list of all reefs
+df <-   left_join(year, #join year to have all years, with combined list of all reefs
             YOY %>% 
     reduce(full_join, #combine list using reduce with function "full_join" to have all reefs on one df
            by = "year") %>% 
     rename("WNR" = count.x, #rename columns to site names
            "SMK" = count.y ,
-           "BK" = count)
-     )
+           "BK" = count))
+
+#edit df to have 0 on counts and NA on data without data
+df2 <-  df %>% 
+  pivot_longer(cols = WNR:BK, #make longer to do it all at once
+               names_to = "reef",
+               values_to = "count") %>% 
+  mutate(count = if_else(year %in% c(2000:2006) & is.na(count), 0, 
+                 if_else(
+                   year %in% c(2009:2021) & is.na(count), 0,
+                   if_else(
+                     year %in% c(2007:2008) & is.na(count), NA,
+                     count
+                   )))) %>% 
+  pivot_wider(names_from = reef,
+              values_from = count)
+  
+
 } #summarize the total abundundance of YOY by year
 
-#graph of all species on one
+
+#--- Resident (Juvenile + Adult data)
+fishRes <- function(data,species,length) {
+  data %>% 
+    filter(species_code == {{species}},
+           total_length>=length) %>% 
+    uncount(count)%>% 
+    mutate(n = 1) %>% 
+    group_by(year, species_code, reef_code, transect_code, total_length) %>% 
+    summarise(n = sum(n))
+} #number of fish at size at site at year at transect
+
+fishRes_sum <- function(data,species,length,reef) { 
+  data %>% 
+    filter(species_code == {{species}},
+           total_length >=length,
+           reef_code%in%{{reef}}) %>% 
+    uncount(count) %>% 
+    mutate(count = 1) %>% 
+    group_by(year) %>% 
+    summarize(count = sum(count))
+}#summarize the abundance of YOY by size 
+
+#--- graph of all species on one
 ar_nr <- function(data,reefar,xlim,reefnr, title){
   p1 <- ggplot(data %>% filter(reef_code%in% {{reefar}}) %>% 
                  mutate(year = as_factor(year)),    #data 
@@ -136,8 +181,9 @@ ar_nr <- function(data,reefar,xlim,reefnr, title){
          width = 25, height = 33)
 }
 
-#graph of individual species
-species_reefs <- function(data,species, reefar,xlim,ylim, yinterval, reefbk,reefsmk, reefnr, title, arnr_filename, reefs_filename){
+#---- graph of individual species
+species_reefs <- function(data,species, reefar,xlim,ylim, yinterval,
+                          reefbk,reefsmk, reefnr, title, arnr_filename, reefs_filename){
   p1 <- ggplot(songs_count %>% filter(reef_code%in% reefar,
                                       species_code%in% {{species}})%>% 
                  mutate(year = as_factor(year)),    #data 
@@ -195,7 +241,7 @@ species_reefs <- function(data,species, reefar,xlim,ylim, yinterval, reefbk,reef
                        limits = c(0,NA))+  #scale x to be max length
     scale_y_continuous(breaks = seq(0,ylim, yinterval),
                        limits = c(0,ylim))+ #scale y tick mark
-    labs(x = "Total Length (mm)",    #edit axis & legend labels
+    labs(x = "Total Length (cm)",    #edit axis & legend labels
          y = "Density", 
          fill = "Year",
          title = element_text("BK"))+
@@ -263,37 +309,27 @@ species_reefs <- function(data,species, reefar,xlim,ylim, yinterval, reefbk,reef
 
 
 
-
-####------------import data----------#####
+####------------import data ----------####
 songs <- read.csv(here("data","songs_clean.csv"))
 glimpse(songs)
   
 #Data wrangle to have individual fish per row
 songs_count <- songs %>% 
-  group_by( year,total_length, species_code, reef_code) %>%  #group analysis 
   mutate(species_code = as_factor(factor(species_code,   #reorder the factors
                                          levels = c( "SEPU","PACL","PANE","EMJA","CHPU","OXCA"))),
          total_length = as.numeric(total_length), #change length to numeric
          reef_code = as_factor(reef_code),
-         year = as.numeric(year)) %>%    
-  summarise(count = sum(count)) %>%     #sum the count through the years
+         year = as.factor(year)) %>%   
+  summarise(count = sum(count), 
+            .by = c(year,total_length, species_code, reef_code, transect_code)) %>%     #sum the count through the years
   uncount(count) %>%                   #reorder so each row = 1 count
-  select(year, species_code,reef_code,total_length) %>%  #reorder df order
-  mutate(n = 1)
+  relocate(year, species_code,reef_code,transect_code, total_length) %>%  #reorder df order
+  mutate(count = 1) #make a column so each row has one value
 
-#summary data 
-songs_count_sum <- songs %>% 
-  group_by( year,total_length, species_code, reef_code,transect_code) %>%  #group analysis 
-  mutate(species_code = as_factor(factor(species_code,   #reorder the factors
-                                         levels = c( "SEPU","PACL","PANE","EMJA","CHPU","OXCA"))),
-         total_length = as.numeric(total_length), #change length to numeric
-         reef_code = as_factor(reef_code),
-         year = as_factor(year)) %>%    
-  summarise(count = sum(count)) #sum the count through the years
-            # total_area_sampled = sum(total_area_sampled)  
-  # mutate(size_density = count/total_area_sampled)%>% 
-  # group_by( year,total_length, species_code, reef_code) %>% 
-  # summarise(size_density = sum(size_density))
+#summarizing the data by year, length, species, reef, and transect
+songs_count_sum <- songs_count %>%  
+  summarise(count = sum(count), #sum the count through the years
+            .by = c(year, species_code, reef_code,transect_code,total_length)) 
 
 
 
@@ -316,20 +352,27 @@ size_summary <- songs_year %>%  #summarize size by category
             se = se(total_length))
 
 
-
-
-
-####-----Number of YOY-----
-
-yoy_emja <- yoy(songs_count_sum, "EMJA", 13)
+####-----Number of YOY-----####
+#summary by year
+yoy_emja <- yoy(songs_count_sum, "EMJA", 12.7)
 yoy_pacl <- yoy(songs_count_sum, "PACL", 7.62)
 yoy_chpu <- yoy(songs_count_sum, "CHPU", 7.62)
 yoy_sepu <- yoy(songs_count_sum, "SEPU", 7.62)
 yoy_pane <- yoy(songs_count_sum, "PANE", 7.62)
-yoy_oxca<- yoy(songs_count_sum, "OXCA", 7.62)
+yoy_oxca<- yoy(songs_count_sum, "OXCA", 7.62) 
 
-#abundance and size of 
-yoy <- fishYOY(songs, "EMJA", 13) 
+#export to one excel sheet
+# yoy_tables <- list("sepu" = yoy_sepu, "pane" = yoy_pane,  "pacl" = yoy_pacl, 
+#                    "emja" = yoy_emja,"chpu" = yoy_chpu, "oxca" = yoy_oxca)
+# openxlsx::write.xlsx(yoy_tables, file = here("output","yoy.xlsx"))
+
+#abundance and size at each transect
+yoy_emja_abd <- fishYOY(songs, "EMJA", 12.7) 
+yoy_pacl_abd <- fishYOY(songs, "PACL", 7.62)
+yoy_chpu_abd <- fishYOY(songs, "CHPU", 7.62)
+yoy_sepu_abd <- fishYOY(songs, "SEPU", 7.62)
+yoy_pane_abd <- fishYOY(songs, "PANE", 7.62)
+yoy_oxca_abd <- fishYOY(songs, "OXCA", 7.62) 
 
 
 #######-----------Plot----------##########

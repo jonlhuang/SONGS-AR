@@ -17,7 +17,7 @@ library(forecast)
 ########-------------- Import & transformation of data frame --------------###########
 
 ##import data
-danapt_sst <- read.csv(here::here("Data/Oceanographic/danapoint_sst.csv"))
+danapt_sst <- read.csv(here::here("data/Oceanographic/danapoint_sst.csv"))
 danapt_sst [danapt_sst == "NaN"] <- NA         #replace NaN with NA
 names(danapt_sst) <- danapt_sst[1,]            #make the first row the header 
 danapt_sst <- danapt_sst[-1,]                  #add the first row to the header
@@ -37,7 +37,7 @@ danapt_sstf<-cbind(danapt_sstspread,danapt_ssttime) %>%                   #combi
   rename("time" = danapt_ssttime)
 
 #import oceanside SST data
-oceanside_sst <- read.csv(here::here("Data/Oceanographic/oceanside_sst.csv"))
+oceanside_sst <- read.csv(here::here("data/Oceanographic/oceanside_sst.csv"))
 oceanside_sst [oceanside_sst == "NaN"] <- NA         #replace NaN with NA
 names(oceanside_sst) <- oceanside_sst[1,]            #make the first row the header 
 oceanside_sst <- oceanside_sst[-1,]                  #add the first row to the header
@@ -57,7 +57,7 @@ oceanside_sstf<-cbind(oceanside_sstspread,oceanside_ssttime) %>%                
   rename("time" = oceanside_ssttime)
 
 #Scripps data
-scripps_sst <- read.csv(here::here("Data/Oceanographic/scripps.csv"))
+scripps_sst <- read.csv(here::here("data/Oceanographic/scripps.csv"))
 scripps_sst [scripps_sst == "NaN"] <- NA         #replace NaN with NA
 names(scripps_sst) <- scripps_sst[1,]            #make the first row the header 
 scripps_sst <- scripps_sst[-1,]                  #add the first row to the header

@@ -1,5 +1,5 @@
 ##########################################################
-#von Bertalanffy Growth curve 
+#von Bertalanffy Growth curve, CV, and mortality
 #Jonathan Huang - Dec 2022
 ##########################################################
 
@@ -27,6 +27,7 @@ vb(0.1,244.7046,0.2606294,-1.961704) #test
 #----------Natural mortality function (Then et al 2015)------
 mort <- function(K,Linf) (4.118*K^0.73)*(Linf^-0.33)
 
+#
 
 ####---------load data--------
 chpu <- read.csv(here::here("data","otolith_data","CHPU_otolith_data_2022.csv")) %>% 

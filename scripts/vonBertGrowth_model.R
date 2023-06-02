@@ -24,21 +24,27 @@ vb <- function(Age, Linf, K, t0) Linf*(1-exp(-K*(Age-t0)))
 # vb <- vbFuns(param = "vonBertalanffy") #
 
 vb(0.1,244.7046,0.2606294,-1.961704) #test
-#----------Natural mortality function (Then et al 2015)------
-mort <- function(K,Linf) (4.118*K^0.73)*(Linf^-0.33)
 
-#
+#----------Natural mortality function (Then et al 2015)------
+#using von bert
+mort <- function(K,Linf) (4.118*(K^0.73)*(Linf^-0.33)) #Length in cm
+
+#using tmax (maximum age)
+morttmax <- function(tmax) 4.899*(tmax^-0.916)
+morttmax(28)
 
 ####---------load data--------
 chpu <- read.csv(here::here("data","otolith_data","CHPU_otolith_data_2022.csv")) %>% 
   rename(TL = TL..mm.) %>% 
   select(c(Species, Site, Age,TL)) %>% 
+  mutate(TL = TL*0.1) %>% 
   drop_na(Age)
 oxca <- read.csv(here::here("data","otolith_data","OXCA_otolith_data_2022.csv"))%>% 
   mutate(FL..mm. = if_else(FL..mm. ==".",NA,NA),
          FL..mm. = as.numeric(FL..mm.))%>% 
   rename(TL = TL..mm.) %>% 
   select(c(Species, Site, Age,TL)) %>% 
+  mutate(TL = TL*0.1) %>% 
   drop_na(Age)
 
 
@@ -81,7 +87,27 @@ summary(fit_chpu, correlation = TRUE)
 #check assumptions
 residPlot(fit_chpu)
 
-############# NEXT: Graph plot, get CV for length at age
+#get mortality from VBGF
+coef(fit_chpu)
+mort(0.368,22.11) #0.71 natural mortality rate
+mort(0.36,21.8)
+
+#cv - cv by age
+chpu_age <- data_frame(Age = as.factor(c(1:9)))
+chpu_avg <- chpu %>% 
+  summarise(mean = mean(TL),
+            sd = sd(TL),
+            .by = Age) %>% 
+  mutate(Age = as.factor(Age))
+chpu_cv <- full_join(chpu_age,chpu_avg) %>% 
+  mutate(cv = sd/mean)
+#cv range between 0.04 - 0.1 for different ages
+a <- chpu_cv %>% drop_na(cv) 
+mean(a$cv)
+#mean cv = 0.067
+
+
+############# NEXT: Graph plot
 
 #Graph 
 #basic plot w/ a vb fit 
@@ -107,7 +133,7 @@ predict(fit_chpu,data.frame(Age=2:7)) #in the dataframe, "Age" need to match how
 predictfish <- function(x) predict(x,data.frame(Age=ages))
 predictfish(fit_chpu)
 
-#predict with bootstraping of data - Issues with bootstrapping, not replacing by age& replacing by whole size range??
+#predict with bootstraping of data
 fit_boot_chpu <- Boot(fit_chpu, f = predictfish, method = "case")
 pred_boot <- data.frame(ages,
                         predict(fit_chpu, #use fit fomula
@@ -122,7 +148,7 @@ pred_chpu <- pred_boot %>%
 
 # Make dataframe with mean vb model and ages, no bootstrapping
 mean_vb_chpu <- data_frame(ages,
-                           len = vb(ages,221.1619,0.3684, -1.4496)) %>%  #vb parameter for chpu
+                           len = vb(ages,22.11619,0.3684, -1.4496)) %>%  #vb parameter for chpu
   filter(ages>=-2,ages<=10)
 
 # Plot with simulated value
@@ -131,8 +157,12 @@ ggplot() +
   geom_point(chpu, mapping= aes(x = Age, y = TL))+
   geom_line(mean_vb_chpu, mapping = aes(x = ages, y = len),
             linewidth = 1.0, linetype = "dashed")+
-  scale_y_continuous(breaks = seq(0,250,50), limits = c(0,250))+
+  scale_y_continuous(breaks = seq(0,25,5), limits = c(0,25))+
   scale_x_continuous(breaks = seq(-2,9,1),limits = c(-1,9))
+
+
+
+
 
 
 ####---------VBGF OXCA-----------------------------------------------
@@ -166,7 +196,28 @@ summary(fit_oxca, correlation = TRUE)
 #check assumptions
 residPlot(fit_oxca)
 
-############# NEXT: Graph plot, get CV for length at age
+#get mortality from VBGF
+coef(fit_oxca)
+mort(0.564,22.45) #0.97 natural mortality rate?!?
+
+
+#cv - cv by age
+oxca_age <- data_frame(Age = as.factor(c(1:9)))
+oxca_avg <- oxca %>% 
+  summarise(mean = mean(TL),
+            sd = sd(TL),
+            .by = Age) %>% 
+  mutate(Age = as.factor(Age))
+oxca_cv <- full_join(oxca_age,oxca_avg) %>% 
+  mutate(cv = sd/mean)
+#cv range between 0.04 - 0.7 for different ages
+a <- oxca_cv %>% drop_na(cv) 
+mean(a$cv)
+#mean cv = 0.061
+
+
+
+############# NEXT: Graph plot
 #Graph 
 #basic plot w/ a vb fit 
 ggplot(data=oxca,aes(x=Age,y=TL))+
@@ -185,7 +236,7 @@ ages <- seq(-2,11, length.out = 375) # make sequence to predict outside data we 
 predictfish <- function(x) predict(x,data.frame(Age=ages),type ="class") #specify "Age" to the raw data column
 predictfish(fit_oxca)
 
-#predict with bootstraping of data - Issues with bootstrapping, not replacing by age& replacing by whole size range??
+#predict with bootstraping of data 
 fit_boot_oxca <- Boot(fit_oxca, f = predictfish, method = "case")
 pred_oxca <- data.frame(ages,
                         predict(fit_oxca, 
@@ -200,7 +251,7 @@ pred_oxca <- pred_oxca %>%
 
 # Make dataframe with mean vb model and ages, no bootstrapping
 mean_vb_oxca <- data_frame(ages,
-                   len = vb(ages,224.55,0.56, -0.602)) %>% 
+                   len = vb(ages,22.455,0.56, -0.602)) %>% 
   filter(ages>=-1,ages<=max(oxca$Age))
 
 # Plot with simulated value
@@ -209,6 +260,6 @@ ggplot() +
   geom_point(oxca, mapping= aes(x = Age, y = TL))+
   geom_line(mean_vb_oxca, mapping = aes(x = ages, y = len),
             linewidth = 1.0, linetype = "dashed")+
-  scale_y_continuous(breaks = seq(0,250,50), limits = c(0,250))+
+  scale_y_continuous(breaks = seq(0,25,5), limits = c(0,25))+
   scale_x_continuous(breaks = seq(-2,9,1),limits = c(-1,9))
 

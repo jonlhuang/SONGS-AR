@@ -7,7 +7,10 @@ library(here)
 library(patchwork)
 library(ggpubr)
 library(ggh4x) #additional axis 
-
+library(lme4)
+library(lmerTest)
+library(performance) #for model checking
+library(car)
 
 ####------------import data ----------####
 songs <- read.csv(here("data","songs_clean.csv"))
@@ -422,6 +425,28 @@ res_chpu_size <- fishRes(songs_count, "CHPU", 7.62)
 res_sepu_size <- fishRes(songs_count, "SEPU", 7.62)
 res_pane_size <- fishRes(songs_count, "PANE", 7.62)
 res_oxca_size <- fishRes(songs_count, "OXCA", 7.62) 
+
+
+#testing difference between each site - repeated measure anova
+### Find a non-parametric way - assumptions not met -friedman test potentially - or randomization test
+chpu_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
+             data=yoy_chpu_size)
+anova(chpu_anova)
+summary(chpu_anova)
+plot(chpu_anova)
+check_model(chpu_anova)
+
+sepu_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
+                 data=yoy_sepu_size)
+anova(sepu_anova)
+summary(sepu_anova)
+check_model(sepu_anova)
+
+pacl_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
+                 data=yoy_pacl_size)
+anova(pacl_anova)
+summary(pacl_anova)
+check_model(pacl_anova)
 
 #######-----------Plot----------##########
 

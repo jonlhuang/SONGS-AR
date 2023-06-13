@@ -64,12 +64,7 @@ fishYOY_sum <- function(data,species,length,reef) {
 
 yoy <- function(data,species,size){
   wnr <- fishYOY_sum(data, species, size, "WNR")#take YOY aboundance from every site 
-  # %>% 
-  #  mutate( count = case_when(.$year %in% c(2000:2006) == NA ~ 0, 
-  #             TRUE ~ fishYOY_sum(data, species, size, "WNR")))
-
   bk <- fishYOY_sum(data, species, size, "BK")
-  
   smk <- fishYOY_sum(data, species, size, "SMK")
   year <- data_frame(year = as_factor(c(2000:2021))) #make a list with all years to show every year
   YOY <- list(wnr,smk,bk) #make all sites into one list
@@ -80,7 +75,7 @@ df <-   left_join(year, #join year to have all years, with combined list of all 
            by = "year") %>% 
     rename("WNR" = count.x, #rename columns to site names
            "SMK" = count.y ,
-           "BK" = count))
+           "BK" = count)) 
 
 #edit df to have 0 on counts and NA on data without data
 df2 <-  df %>% 
@@ -95,7 +90,8 @@ df2 <-  df %>%
                      count
                    )))) %>% 
   pivot_wider(names_from = reef,
-              values_from = count)
+              values_from = count)%>% 
+  mutate(species_code = as.factor(species))
 
 } #summarize the total abundundance of YOY by year
 
@@ -151,7 +147,8 @@ Res <- function(data,species,size){
                                count
                              )))) %>% 
     pivot_wider(names_from = reef,
-                values_from = count)
+                values_from = count)%>% 
+    mutate(species_code = species)
 }
 
 
@@ -389,7 +386,13 @@ size_summary <- songs_year %>%  #summarize size by category
 
 
 ####-----Number of YOY-----####
-#summary by year
+#number 
+yoy <- songs_count_sum %>% 
+  filter(species_code %in% c("PACL","CHPU","SEPU","PANE","OXCA") & total_length <7.62)
+         species_code == "EMJA" & total_length < 12.7)
+
+
+#summary by year by species
 yoy_emja <- yoy(songs_count_sum, "EMJA", 12.7)
 yoy_pacl <- yoy(songs_count_sum, "PACL", 7.62)
 yoy_chpu <- yoy(songs_count_sum, "CHPU", 7.62)
@@ -403,12 +406,16 @@ yoy_oxca<- yoy(songs_count_sum, "OXCA", 7.62)
 # openxlsx::write.xlsx(yoy_tables, file = here("output","yoy.xlsx"))
 
 #abundance and size at each transect
-yoy_emja_size <- fishYOY(songs_count, "EMJA", 12.7) 
+yoy_emja_size <- fishYOY(songs_count, "EMJA", 12.7)
 yoy_pacl_size <- fishYOY(songs_count, "PACL", 7.62)
 yoy_chpu_size <- fishYOY(songs_count, "CHPU", 7.62)
 yoy_sepu_size <- fishYOY(songs_count, "SEPU", 7.62)
 yoy_pane_size <- fishYOY(songs_count, "PANE", 7.62)
 yoy_oxca_size <- fishYOY(songs_count, "OXCA", 7.62) 
+
+#make into one dataframe
+yoy_all_size <- bind_rows(yoy_emja_size,yoy_pacl_size,yoy_chpu_size,
+                          yoy_sepu_size,yoy_pane_size,yoy_oxca_size)
 
 ####-----Number of Resident-----####
 res_emja <- Res(songs_count_sum, "EMJA", 12.7)
@@ -417,6 +424,10 @@ res_chpu <- Res(songs_count_sum, "CHPU", 7.62)
 res_sepu <- Res(songs_count_sum, "SEPU", 7.62)
 res_pane <- Res(songs_count_sum, "PANE", 7.62)
 res_oxca <- Res(songs_count_sum, "OXCA", 7.62) 
+
+#make yoy into one dataframe
+yoy_all <- bind_rows(yoy_chpu, yoy_emja,yoy_oxca, 
+                 yoy_pacl,yoy_pane,yoy_sepu)
 
 #abundance and size at each transect
 res_emja_size <- fishRes(songs_count, "EMJA", 12.7)
@@ -430,7 +441,7 @@ res_oxca_size <- fishRes(songs_count, "OXCA", 7.62)
 #testing difference between each site - repeated measure anova
 ### Find a non-parametric way - assumptions not met -friedman test potentially - or randomization test
 chpu_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
-             data=yoy_chpu_size)
+             data=yoy_emja_size)
 anova(chpu_anova)
 summary(chpu_anova)
 plot(chpu_anova)
@@ -450,12 +461,35 @@ check_model(pacl_anova)
 
 #######-----------Plot----------##########
 
+### -- Line plot 
+
+yoy_all %>%
+  pivot_longer(cols = c(WNR:BK),
+               names_to = "reef",
+               values_to = "tot_count") %>% 
+  # filter(reef == "WNR")%>%
+  ggplot(aes(x = year, y = tot_count, color = reef, group = reef))+
+  geom_line()+
+  geom_point()+
+  facet_wrap(~species_code, scales = "free")+
+  theme_classic2()+
+  theme(axis.text.x = element_text(angle = 90, vjust = .1))
+
+
 ### -- Histogram
-ggplot(yoy_pacl_size,
-       aes(x = total_length, y = n))+
-  geom_col(aes(fill = reef_code))+
-  # facet_wrap(~year, scales = "free")+
-  scale_x_continuous(breaks = seq(0,13,2), limits = c(0,13))
+# ggplot(yoy_pacl_size,
+#        aes(x = total_length, y = n))+
+#   geom_col(aes(fill = reef_code))+
+#   # facet_wrap(~year, scales = "free")+
+#   scale_x_continuous(breaks = seq(0,13,2), limits = c(0,13))
+
+yoy_all_size %>% ungroup() %>% 
+  # filter(reef_code == "WNR") %>% 
+  summarise(tot_count = sum(n), .by = c(year,species_code, reef_code, total_length)) %>% 
+  ggplot(aes(x = total_length, y = tot_count, fill = reef_code))+
+  geom_col()+
+  facet_wrap(~species_code, scales = "free_y")+
+  theme_bw()
 
 
 #raw number of YOY to resident

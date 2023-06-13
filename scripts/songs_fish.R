@@ -42,14 +42,32 @@ se <- function(x) sd(x)/sqrt(length(x))
 
 #--- YOY data
 fishYOY <- function(data,species,length) {
-  data %>% 
+ df <-  data %>% #wrangle data so have each individual fish in one row
     filter(species_code == {{species}},
            total_length<=length) %>% 
     uncount(count)%>% 
     mutate(n = 1) %>% 
     group_by(year, species_code, reef_code, transect_code, total_length) %>% 
-    summarise(n = sum(n))
+    summarise(count = sum(n)) #sum to get all fish by transect by length by year
+ year <- data_frame(year = as_factor(c(2000:2021)),
+                    species_code = as_factor(species))  #add so have all years avaliable
+ df_all <- full_join(year, df) #combine into one dataframe with all years
+ df2 <-  df_all %>% 
+   mutate(count = if_else(year %in% c(2000:2006) & is.na(count), 0, 
+                          if_else(
+                            year %in% c(2009:2021) & is.na(count), 0,
+                            if_else(
+                              year %in% c(2007:2008) & is.na(count), NA,
+                              count
+                            )))) %>% 
+   mutate(species_code = as.factor(species_code)) %>% 
+ mutate(survey_complete = 
+          case_when(year %in% c(2007,2008,2019) ~ 
+                      "no/incomplete survey year",#specify years that have no or incomplete survey
+                      TRUE ~ " "))
+ 
 } #number of fish at size at site at year at transect
+
 
 fishYOY_sum <- function(data,species,length,reef) { 
   data %>% 
@@ -91,7 +109,9 @@ df2 <-  df %>%
                    )))) %>% 
   pivot_wider(names_from = reef,
               values_from = count)%>% 
-  mutate(species_code = as.factor(species))
+  mutate(species_code = as.factor(species))%>% 
+  mutate(survey_complete = case_when(year %in% c(2007,2008,2019) ~ "no/incomplete survey year", #specify years that have no or incomplete survey
+                                     TRUE ~ " "))
 
 } #summarize the total abundundance of YOY by year
 
@@ -386,11 +406,12 @@ size_summary <- songs_year %>%  #summarize size by category
 
 
 ####-----Number of YOY-----####
-#number 
-yoy <- songs_count_sum %>% 
-  filter(species_code %in% c("PACL","CHPU","SEPU","PANE","OXCA") & total_length <7.62)
-         species_code == "EMJA" & total_length < 12.7)
 
+b <- songs %>% filter(total_length<12) %>% 
+  uncount(count) %>% mutate(n = 1) %>% 
+  summarise(count = sum(n), 
+            .by = c(year,species_code,reef_code)) %>% 
+  filter(reef_code == "WNR")
 
 #summary by year by species
 yoy_emja <- yoy(songs_count_sum, "EMJA", 12.7)
@@ -399,6 +420,10 @@ yoy_chpu <- yoy(songs_count_sum, "CHPU", 7.62)
 yoy_sepu <- yoy(songs_count_sum, "SEPU", 7.62)
 yoy_pane <- yoy(songs_count_sum, "PANE", 7.62)
 yoy_oxca<- yoy(songs_count_sum, "OXCA", 7.62) 
+
+#make yoy into one dataframe
+yoy_all <- bind_rows(yoy_chpu, yoy_emja,yoy_oxca, 
+                     yoy_pacl,yoy_pane,yoy_sepu)
 
 #export to one excel sheet
 # yoy_tables <- list("sepu" = yoy_sepu, "pane" = yoy_pane,  "pacl" = yoy_pacl, 
@@ -425,9 +450,7 @@ res_sepu <- Res(songs_count_sum, "SEPU", 7.62)
 res_pane <- Res(songs_count_sum, "PANE", 7.62)
 res_oxca <- Res(songs_count_sum, "OXCA", 7.62) 
 
-#make yoy into one dataframe
-yoy_all <- bind_rows(yoy_chpu, yoy_emja,yoy_oxca, 
-                 yoy_pacl,yoy_pane,yoy_sepu)
+
 
 #abundance and size at each transect
 res_emja_size <- fishRes(songs_count, "EMJA", 12.7)
@@ -467,29 +490,43 @@ yoy_all %>%
   pivot_longer(cols = c(WNR:BK),
                names_to = "reef",
                values_to = "tot_count") %>% 
-  # filter(reef == "WNR")%>%
+  filter(reef == "WNR")%>%
   ggplot(aes(x = year, y = tot_count, color = reef, group = reef))+
   geom_line()+
   geom_point()+
   facet_wrap(~species_code, scales = "free")+
-  theme_classic2()+
+  theme_bw()+
   theme(axis.text.x = element_text(angle = 90, vjust = .1))
 
 
 ### -- Histogram
-# ggplot(yoy_pacl_size,
-#        aes(x = total_length, y = n))+
-#   geom_col(aes(fill = reef_code))+
-#   # facet_wrap(~year, scales = "free")+
-#   scale_x_continuous(breaks = seq(0,13,2), limits = c(0,13))
+#graph of yoy by size by specie
+ggplot(yoy_chpu_size %>% 
+         filter(reef_code %in% c("WNR",NA)), #select only one reef from data
+         aes(x = total_length, y = count))+
+  geom_col(aes(fill = reef_code))+
+  facet_wrap(~year, scales = "free")+ #separate by year, with adusting axis
+  scale_x_continuous(breaks = seq(0,13,2), limits = c(0,8))+
+  labs(y = "count", x = "Total Length (cm)",
+       title = "YOY size distribution by year",
+       fill = "Reef Name")+ #legend title
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_text(aes(x = 4, y =1.5, label = survey_complete), size = 3) #add survey info
 
+
+#graph of yoys count by length
 yoy_all_size %>% ungroup() %>% 
-  # filter(reef_code == "WNR") %>% 
+  filter(reef_code == "WNR") %>%
   summarise(tot_count = sum(n), .by = c(year,species_code, reef_code, total_length)) %>% 
   ggplot(aes(x = total_length, y = tot_count, fill = reef_code))+
   geom_col()+
   facet_wrap(~species_code, scales = "free_y")+
-  theme_bw()
+  labs(y = "Total count", x = "Total Length (cm)",
+       title = "YOY size distribution by species",
+       fill = "Reef Name")+ #legend title
+  theme_bw()+
+  theme(plot.title = element_text(hjust = 0.5))
 
 
 #raw number of YOY to resident

@@ -92,15 +92,18 @@ coef(fit_chpu)
 mort(0.368,22.11) #0.71 natural mortality rate
 mort(0.36,21.8)
 
+#canned function in FSA package - same as mort function
+metaM(method = "PaulyLNoT", Linf = 22.11, K = .368)
+
 #cv - cv by age
-chpu_age <- data_frame(Age = as.factor(c(1:9)))
-chpu_avg <- chpu %>% 
+chpu_age <- data_frame(Age = as.factor(c(1:9))) #make a df with all ages
+chpu_avg <- chpu %>%  #estimate mean and sd of each age group
   summarise(mean = mean(TL),
             sd = sd(TL),
             .by = Age) %>% 
   mutate(Age = as.factor(Age))
 chpu_cv <- full_join(chpu_age,chpu_avg) %>% 
-  mutate(cv = sd/mean)
+  mutate(cv = sd/mean) #order by age in numerical order and calculate cv of each age
 #cv range between 0.04 - 0.1 for different ages
 a <- chpu_cv %>% drop_na(cv) 
 mean(a$cv)
@@ -113,8 +116,8 @@ mean(a$cv)
 #basic plot w/ a vb fit 
 ggplot(data=chpu,aes(x=Age,y=TL))+
   geom_point(size=2,alpha=0.1) +
-  scale_y_continuous(name="Total Length (mm)",
-                     limits=c(0,300)) +
+  scale_y_continuous(name="Total Length (cm)",
+                     limits=c(0,30)) +
   scale_x_continuous(name="Age (years)",
                      limits = c(0,9),
                      expand = c(0,0), #change view to the plot to just age 0-9
@@ -200,6 +203,8 @@ residPlot(fit_oxca)
 coef(fit_oxca)
 mort(0.564,22.45) #0.97 natural mortality rate?!?
 
+#canned function in FSA package - same as mort function
+metaM(method = "PaulyLNoT", Linf = 22.45, K = 0.564)
 
 #cv - cv by age
 oxca_age <- data_frame(Age = as.factor(c(1:9)))

@@ -61,10 +61,9 @@ fishYOY <- function(data,species,length) {
                               count
                             )))) %>% 
    mutate(species_code = as.factor(species_code)) %>% 
- mutate(survey_complete = 
-          case_when(year %in% c(2007,2008,2019) ~ 
-                      "no/incomplete survey year",#specify years that have no or incomplete survey
-                      TRUE ~ " "))
+   mutate(survey_complete = case_when(year %in% c(2007,2008) ~ "no survey year", #specify years that have no or incomplete survey
+                                      year == 2019 ~ "partial survey year",
+                                      TRUE ~ " "))
  
 } #number of fish at size at site at year at transect
 
@@ -110,7 +109,8 @@ df2 <-  df %>%
   pivot_wider(names_from = reef,
               values_from = count)%>% 
   mutate(species_code = as.factor(species))%>% 
-  mutate(survey_complete = case_when(year %in% c(2007,2008,2019) ~ "no/incomplete survey year", #specify years that have no or incomplete survey
+  mutate(survey_complete = case_when(year %in% c(2007,2008) ~ "no survey year", #specify years that have no or incomplete survey
+                                     year == 2019 ~ "partial survey year",
                                      TRUE ~ " "))
 
 } #summarize the total abundundance of YOY by year
@@ -384,7 +384,25 @@ species_reefs <- function(data,species, reefar,xlim,ylim, yinterval,
          width = 9, height = 6)
 }
 
+###############################################
+############# data exploration ################
+###############################################
 
+#check number of transects - NOTE: this only shows transects that have value fish seen - not all transects surveyed
+songs_count %>%
+  mutate(transect_code = as_factor(transect_code)) %>% 
+  summarise(transect_num = sum(length(unique(transect_code))), #summarize by year and reef
+            .by = c(year,reef_code))
+
+#list of transect for each parts
+unique(case_when(songs_count$year %in% c(2000:2004) & songs_count$reef_code == "WNR" ~ songs_count$transect_code,
+                         FALSE~" "))
+unique(case_when(songs_count$year %in% c(2005:2006) & songs_count$reef_code == "WNR"~ songs_count$transect_code,
+                            FALSE~" "))
+unique(case_when(songs_count$year %in% c(2010:2021) & songs_count$reef_code == "WNR"~ songs_count$transect_code,
+                 FALSE~" "))
+         
+  # summarise(unique(transect_code))
 
 #######-----------Exploration for environemnt----------##########
 
@@ -405,21 +423,17 @@ size_summary <- songs_year %>%  #summarize size by category
             se = se(total_length))
 
 
+
+
 ####-----Number of YOY-----####
 
-b <- songs %>% filter(total_length<12) %>% 
-  uncount(count) %>% mutate(n = 1) %>% 
-  summarise(count = sum(n), 
-            .by = c(year,species_code,reef_code)) %>% 
-  filter(reef_code == "WNR")
-
 #summary by year by species
-yoy_emja <- yoy(songs_count_sum, "EMJA", 12.7)
-yoy_pacl <- yoy(songs_count_sum, "PACL", 7.62)
-yoy_chpu <- yoy(songs_count_sum, "CHPU", 7.62)
-yoy_sepu <- yoy(songs_count_sum, "SEPU", 7.62)
-yoy_pane <- yoy(songs_count_sum, "PANE", 7.62)
-yoy_oxca<- yoy(songs_count_sum, "OXCA", 7.62) 
+yoy_emja <- yoy(songs_count_sum, "EMJA", 13) #12.7cm from SONGS MMP, rounded up to 13
+yoy_pacl <- yoy(songs_count_sum, "PACL", 8) #7.62cm from SONGS MMP, rounded up to 8- same for remaining species
+yoy_chpu <- yoy(songs_count_sum, "CHPU", 8)
+yoy_sepu <- yoy(songs_count_sum, "SEPU", 8)
+yoy_pane <- yoy(songs_count_sum, "PANE", 8)
+yoy_oxca<- yoy(songs_count_sum, "OXCA", 8) 
 
 #make yoy into one dataframe
 yoy_all <- bind_rows(yoy_chpu, yoy_emja,yoy_oxca, 
@@ -431,34 +445,34 @@ yoy_all <- bind_rows(yoy_chpu, yoy_emja,yoy_oxca,
 # openxlsx::write.xlsx(yoy_tables, file = here("output","yoy.xlsx"))
 
 #abundance and size at each transect
-yoy_emja_size <- fishYOY(songs_count, "EMJA", 12.7)
-yoy_pacl_size <- fishYOY(songs_count, "PACL", 7.62)
-yoy_chpu_size <- fishYOY(songs_count, "CHPU", 7.62)
-yoy_sepu_size <- fishYOY(songs_count, "SEPU", 7.62)
-yoy_pane_size <- fishYOY(songs_count, "PANE", 7.62)
-yoy_oxca_size <- fishYOY(songs_count, "OXCA", 7.62) 
+yoy_emja_size <- fishYOY(songs_count, "EMJA", 13) #12.7cm from SONGS MMP, rounded up to 13
+yoy_pacl_size <- fishYOY(songs_count, "PACL", 8) #7.62cm from SONGS MMP, rounded up to 8 - same for remaining species
+yoy_chpu_size <- fishYOY(songs_count, "CHPU", 8)
+yoy_sepu_size <- fishYOY(songs_count, "SEPU", 8)
+yoy_pane_size <- fishYOY(songs_count, "PANE", 8)
+yoy_oxca_size <- fishYOY(songs_count, "OXCA", 8) 
 
 #make into one dataframe
 yoy_all_size <- bind_rows(yoy_emja_size,yoy_pacl_size,yoy_chpu_size,
                           yoy_sepu_size,yoy_pane_size,yoy_oxca_size)
 
 ####-----Number of Resident-----####
-res_emja <- Res(songs_count_sum, "EMJA", 12.7)
-res_pacl <- Res(songs_count_sum, "PACL", 7.62)
-res_chpu <- Res(songs_count_sum, "CHPU", 7.62)
-res_sepu <- Res(songs_count_sum, "SEPU", 7.62)
-res_pane <- Res(songs_count_sum, "PANE", 7.62)
-res_oxca <- Res(songs_count_sum, "OXCA", 7.62) 
+res_emja <- Res(songs_count_sum, "EMJA", 13)#12.7cm from SONGS MMP, rounded up to 13
+res_pacl <- Res(songs_count_sum, "PACL", 8) #7.62cm from SONGS MMP, rounded up to 8- same for remaining species
+res_chpu <- Res(songs_count_sum, "CHPU", 8)
+res_sepu <- Res(songs_count_sum, "SEPU", 8)
+res_pane <- Res(songs_count_sum, "PANE", 8)
+res_oxca <- Res(songs_count_sum, "OXCA", 8) 
 
 
 
 #abundance and size at each transect
-res_emja_size <- fishRes(songs_count, "EMJA", 12.7)
-res_pacl_size <- fishRes(songs_count, "PACL", 7.62)
-res_chpu_size <- fishRes(songs_count, "CHPU", 7.62)
-res_sepu_size <- fishRes(songs_count, "SEPU", 7.62)
-res_pane_size <- fishRes(songs_count, "PANE", 7.62)
-res_oxca_size <- fishRes(songs_count, "OXCA", 7.62) 
+res_emja_size <- fishRes(songs_count, "EMJA", 13)#12.7cm from SONGS MMP, rounded up to 13
+res_pacl_size <- fishRes(songs_count, "PACL", 8) #7.62cm from SONGS MMP, rounded up to 8- same for remaining species
+res_chpu_size <- fishRes(songs_count, "CHPU", 8)
+res_sepu_size <- fishRes(songs_count, "SEPU", 8)
+res_pane_size <- fishRes(songs_count, "PANE", 8)
+res_oxca_size <- fishRes(songs_count, "OXCA", 8) 
 
 
 #testing difference between each site - repeated measure anova
@@ -501,7 +515,7 @@ yoy_all %>%
 
 ### -- Histogram
 #graph of yoy by size by specie
-ggplot(yoy_chpu_size %>% 
+ggplot(yoy_pacl_size %>% 
          filter(reef_code %in% c("WNR",NA)), #select only one reef from data
          aes(x = total_length, y = count))+
   geom_col(aes(fill = reef_code))+
@@ -512,13 +526,13 @@ ggplot(yoy_chpu_size %>%
        fill = "Reef Name")+ #legend title
   theme_bw()+
   theme(plot.title = element_text(hjust = 0.5))+
-  geom_text(aes(x = 4, y =1.5, label = survey_complete), size = 3) #add survey info
+  geom_text(aes(x = 4, y =2, label = survey_complete), size = 3) #add survey info - text in plots
 
 
 #graph of yoys count by length
 yoy_all_size %>% ungroup() %>% 
   filter(reef_code == "WNR") %>%
-  summarise(tot_count = sum(n), .by = c(year,species_code, reef_code, total_length)) %>% 
+  summarise(tot_count = sum(count), .by = c(year,species_code, reef_code, total_length)) %>% 
   ggplot(aes(x = total_length, y = tot_count, fill = reef_code))+
   geom_col()+
   facet_wrap(~species_code, scales = "free_y")+
@@ -546,9 +560,11 @@ ggplot(songs_count %>% #add column for YOY or resident
   
 
 ###-- Denisty plot
-ggplot(yoy_pacl_sz,
-       aes(x = total_length))+
-  geom_density(adjust = 2) #binwith of 2 
+ggplot(yoy_all_size,
+       aes(x = total_length, fill = species_code))+
+  geom_density(adjust = 1)+ #binwith of 1 
+  facet_wrap(~species_code)
+
 
 #byspecie and by site
 

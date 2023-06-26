@@ -6,10 +6,11 @@ library(tidyverse)
 library(here)
 library(patchwork)
 library(ggpubr)
-library(ggh4x) #additional axis 
+library(ggh4x) #additional ggplot axis 
 library(lme4)
 library(lmerTest)
 library(performance) #for model checking
+library(permuco) #permutation (randomization) test
 library(car)
 
 ####------------import data ----------####
@@ -168,7 +169,10 @@ Res <- function(data,species,size){
                              )))) %>% 
     pivot_wider(names_from = reef,
                 values_from = count)%>% 
-    mutate(species_code = species)
+    mutate(species_code = species)%>% 
+    mutate(survey_complete = case_when(year %in% c(2007,2008) ~ "no survey year", #specify years that have no or incomplete survey
+                                       year == 2019 ~ "partial survey year",
+                                       TRUE ~ " "))
 }
 
 
@@ -474,74 +478,118 @@ res_sepu_size <- fishRes(songs_count, "SEPU", 8)
 res_pane_size <- fishRes(songs_count, "PANE", 8)
 res_oxca_size <- fishRes(songs_count, "OXCA", 8) 
 
+################################################# STILL TESTING
+############ Statistical Tests - YOY  ########### 
+#################################################
+
+
 
 #testing difference between each site - repeated measure anova
 ### Find a non-parametric way - assumptions not met -friedman test potentially - or randomization test
-chpu_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
-             data=yoy_emja_size)
-anova(chpu_anova)
-summary(chpu_anova)
-plot(chpu_anova)
-check_model(chpu_anova)
 
-sepu_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
-                 data=yoy_sepu_size)
-anova(sepu_anova)
-summary(sepu_anova)
-check_model(sepu_anova)
+# chpu_anova<-lmer(count ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
+#              data=yoy_emja_size)
+# anova(chpu_anova)
+# summary(chpu_anova)
+# plot(chpu_anova)
+# check_model(chpu_anova)
 
-pacl_anova<-lmer(n ~ reef_code + year + reef_code:year + (1|reef_code/transect_code),
-                 data=yoy_pacl_size)
-anova(pacl_anova)
-summary(pacl_anova)
-check_model(pacl_anova)
+
+#### ---- Randomization test with repeated measure anova 
+# Asing Questions
+#info on randomization (or permutation) test://www.uvm.edu/~statdhtx/StatPages/Randomization%20Tests/RandomRepeatedMeasuresAnovaR.html
+#Note: randomization test uses random assignment 
+# SO, if we are abile to shuffle randomaly abundance at each year, the sites should be the same 
+
+contrasts(yoy_all_size$year) <- contr.sum
+
 
 #######-----------Plot----------##########
 
 ### -- Line plot 
 
+#fish count by year
+year <- data_frame(year = as.factor(c(2000:2021)))
+songs_tot_count <- songs_count_sum %>% #wrangle to have sum count of every species 
+  filter(reef_code == "WNR") %>% 
+  mutate(species_code = as.factor(species_code),
+         year = as.factor(year)) %>% 
+  uncount(count) %>% 
+  mutate(count = 1) %>% 
+  reframe(tot_count = sum(count),
+            .by = c(year, species_code)) %>% 
+  pivot_wider(names_from = species_code,
+              values_from = tot_count)
+left_join(year, songs_tot_count) %>% 
+  pivot_longer(cols = c(CHPU:PACL),
+               names_to = "species_code",
+               values_to = "tot_count") %>% 
+  ggplot(aes(x = year, y = tot_count, color = species_code, group = species_code))+
+  geom_line()+
+  geom_point()+
+  facet_wrap(~species_code, scales = "free")+
+  labs(y = "Total Count", x = "year",
+       title = "Total individual counts by year at WNR")+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 90, vjust = .1),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "none")
+# ggsave(here("output", "tot_count_year_WBR.png"),
+#        width = 15, height = 9)
+
+
+#yoy by year
 yoy_all %>%
   pivot_longer(cols = c(WNR:BK),
                names_to = "reef",
                values_to = "tot_count") %>% 
   filter(reef == "WNR")%>%
-  ggplot(aes(x = year, y = tot_count, color = reef, group = reef))+
+  ggplot(aes(x = year, y = tot_count, color = species_code, group = reef))+
   geom_line()+
   geom_point()+
   facet_wrap(~species_code, scales = "free")+
+  labs(y = "Total Count", x = "year",
+       title = "Total YOY individual counts by year at WNR")+
   theme_bw()+
-  theme(axis.text.x = element_text(angle = 90, vjust = .1))
-
+  theme(axis.text.x = element_text(angle = 90, vjust = .1),
+        plot.title = element_text(hjust = 0.5),
+        legend.position = "none")
+# ggsave(here("output", "YOY_tot_count_year_WBR.png"),
+#        width = 15, height = 9)
 
 ### -- Histogram
-#graph of yoy by size by specie
-ggplot(yoy_pacl_size %>% 
+#graph of yoy by size by species
+ggplot(yoy_oxca_size %>% 
          filter(reef_code %in% c("WNR",NA)), #select only one reef from data
          aes(x = total_length, y = count))+
   geom_col(aes(fill = reef_code))+
   facet_wrap(~year, scales = "free")+ #separate by year, with adusting axis
-  scale_x_continuous(breaks = seq(0,13,2), limits = c(0,8))+
+  scale_x_continuous(breaks = seq(0,15,2), limits = c(0,14))+
   labs(y = "count", x = "Total Length (cm)",
-       title = "YOY size distribution by year",
+       title = "YOY size distribution by year at WNR",
        fill = "Reef Name")+ #legend title
   theme_bw()+
-  theme(plot.title = element_text(hjust = 0.5))+
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none")+
   geom_text(aes(x = 4, y =2, label = survey_complete), size = 3) #add survey info - text in plots
-
+# ggsave(here("output", "YOY_oxca_count_year_WNR.png"),
+#        width = 15, height = 10)
 
 #graph of yoys count by length
 yoy_all_size %>% ungroup() %>% 
   filter(reef_code == "WNR") %>%
   summarise(tot_count = sum(count), .by = c(year,species_code, reef_code, total_length)) %>% 
-  ggplot(aes(x = total_length, y = tot_count, fill = reef_code))+
+  ggplot(aes(x = total_length, y = tot_count, fill = species_code))+
   geom_col()+
   facet_wrap(~species_code, scales = "free_y")+
   labs(y = "Total count", x = "Total Length (cm)",
-       title = "YOY size distribution by species",
+       title = "YOY size distribution by species at WNR",
        fill = "Reef Name")+ #legend title
   theme_bw()+
-  theme(plot.title = element_text(hjust = 0.5))
-
+  theme(plot.title = element_text(hjust = 0.5),
+        legend.position = "none")
+# ggsave(here("output", "YOY_tot_count_sizedist_specie_WNR.png"),
+#        width = 15, height = 10)
 
 #raw number of YOY to resident
 ggplot(songs_count %>% #add column for YOY or resident
@@ -562,12 +610,11 @@ ggplot(songs_count %>% #add column for YOY or resident
 ###-- Denisty plot
 ggplot(yoy_all_size,
        aes(x = total_length, fill = species_code))+
-  geom_density(adjust = 1)+ #binwith of 1 
+  geom_density(adjust = 2)+ #binwith of 1 
   facet_wrap(~species_code)
 
 
-#byspecie and by site
-
+######---------byspecie and by site---------
 #all species and plots on an ar_nr
 ar_nr(songs_count,"WNR",75,c("BK","SMK"), "AR_NR_density_sizedistribution.pdf")
 

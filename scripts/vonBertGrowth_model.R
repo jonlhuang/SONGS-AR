@@ -46,6 +46,13 @@ oxca <- read.csv(here::here("data","otolith_data","OXCA_otolith_data_2022.csv"))
   select(c(Species, Site, Age,TL)) %>% 
   mutate(TL = TL*0.1) %>% 
   drop_na(Age)
+emja <- read.csv(here::here("data","otolith_data","EMJA_otolith_data_2022.csv"))%>% 
+  mutate(FL..mm. = if_else(FL..mm. ==".",NA,NA),
+         FL..mm. = as.numeric(FL..mm.))%>% 
+  rename(TL = TL..mm.) %>% 
+  select(c(Species, Site, Age,TL)) %>% 
+  mutate(TL = TL*0.1) %>% 
+  drop_na(Age)
 
 
 #combine two files
@@ -267,4 +274,104 @@ ggplot() +
             linewidth = 1.0, linetype = "dashed")+
   scale_y_continuous(breaks = seq(0,25,5), limits = c(0,25))+
   scale_x_continuous(breaks = seq(-2,9,1),limits = c(-1,9))
+
+
+####---------VBGF EMJA-----------------------------------------------
+#basic fitting of data to get reasonable starting values
+# using svStarts in the "FSA" package to get starting values
+svemja <- vbStarts(TL~Age, data = emja)
+svemja
+
+# Model fitting 
+#test model make sure it works - cool it works
+vb(3, Linf = 1200,K =0.13, t0=-2.0)
+
+#paramater estimate of VBGF
+fit_emja <- nls(TL~vb(Age,Linf,K,t0), #use nls for parameter parametization 
+                data = emja,  #use chpu age and lenght data
+                start = svemja) #startign with values from vbStart function
+
+coef(fit_emja) #get the coefficients
+#test 
+vb(-1.9,224.55,0.56,-0.6)
+
+#confidence interval from a bootstrap method
+confint(
+  nlsBoot(fit_emja)
+)
+
+#summary of model
+summary(fit_emja, correlation = TRUE)
+#variation aroudn the model (resid std err) = 11.78
+
+#check assumptions
+residPlot(fit_emja)
+
+#get mortality from VBGF
+coef(fit_emja)
+#Use max age as suggested by Then et al. 2015, max age of 10 - fishbase.com
+morttmax(10)
+#0.59 mortality rate
+
+#cv - cv by age
+emja_age <- data_frame(Age = as.factor(c(0:5)))
+emja_avg <- emja %>% 
+  summarise(mean = mean(TL),
+            sd = sd(TL),
+            .by = Age) %>% 
+  mutate(Age = as.factor(Age))
+emja_cv <- full_join(emja_age,emja_avg) %>% 
+  mutate(cv = sd/mean)
+#cv range between 0.04 - 0.7 for different ages
+a <- emja_cv %>% drop_na(cv) 
+mean(a$cv)
+#mean cv = 0.057
+
+
+
+############# NEXT: Graph plot
+#Graph 
+#basic plot w/ a vb fit 
+ggplot(data=emja,aes(x=Age,y=TL))+
+  geom_point(size=2,alpha=0.1) +
+  scale_y_continuous(name="Total Length (mm)",limits=c(0,30)) +
+  scale_x_continuous(name="Age (years)",breaks = 0:10) +
+  geom_smooth(method="nls",se=FALSE,
+              method.args=list(formula=y~vb(x,Linf,K,t0),start=svemja),
+              color="black",linewidth=1) +
+  theme(panel.grid.minor.x=element_blank())
+
+#predictions to exted the graph outside 
+ages <- seq(-2,8, length.out = 326) # make sequence to predict outside data we have 
+
+#trying using the predict function
+predictfish <- function(x) predict(x,data.frame(Age=ages),type ="class") #specify "Age" to the raw data column
+predictfish(fit_emja)
+
+#predict with bootstraping of data 
+fit_boot_emja <- Boot(fit_emja, f = predictfish, method = "case")
+pred_emja <- data.frame(ages,
+                        predict(fit_emja, 
+                                data.frame(Age = ages)),
+                        confint(fit_boot_emja))
+names(pred_emja) <- c("age","fit","low_CI","up_CI")
+headtail(pred_emja)
+
+#filter out to have biologically reasonable data
+pred_emja <- pred_emja %>% 
+  filter(age>=0,age<=6)
+
+# Make dataframe with mean vb model and ages, no bootstrapping
+mean_vb_emja <- data_frame(ages,
+                           len = vb(ages,23.33,0.7959, -1.03)) %>% 
+  filter(ages>=-1,ages<=max(emja$Age))
+
+# Plot with simulated value
+ggplot() + 
+  geom_ribbon(data=pred_emja,aes(x=age,ymin=low_CI,ymax=up_CI),fill="gray80")+
+  geom_point(emja, mapping= aes(x = Age, y = TL, color = Site), alpha = 0.2)+
+  geom_line(mean_vb_emja, mapping = aes(x = ages, y = len),
+            linewidth = 1.0, linetype = "dashed")+
+  scale_y_continuous(breaks = seq(0,25,5), limits = c(0,25))+
+  scale_x_continuous(breaks = seq(-2,9,1),limits = c(-1,6))
 
